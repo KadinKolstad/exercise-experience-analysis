@@ -1,0 +1,263 @@
+---
+title: "Exercise Experience and Calories Burned per Hour"
+author: "Kadin Kolstad"
+output:
+  html_document:
+    toc: true
+    code_folding: show
+---
+
+## Data Source
+
+Dataset: "Gym Members Exercise Dataset" by Vala Khorasani. Source: <https://www.kaggle.com/datasets/valakhorasani/gym-members-exercise-dataset>
+
+## Research Question
+
+Is there a difference in mean calories burned per hour between novice and experienced male exercisers in this dataset?
+
+I chose this question because I'm interested in exercise and wanted to see how calorie expenditure compares across experience levels. Since workout lengths vary, I calculated calories burned per hour rather than comparing total calories burned per session. I used experience level 1 as the novice group and level 3 as the experienced group, excluding level 2 to focus on the lowest and highest experience categories.
+
+This comparison looks at reported calorie expenditure relative to workout duration. It does not directly measure fitness, workout quality, or progress over time.
+
+## Data Preparation
+
+```{r, message=FALSE}
+library(tidyverse)
+gym <- read.csv("exercise_tracking.csv")
+set.seed(42)
+```
+
+```{r}
+nrow(gym)
+ncol(gym)
+sum(is.na(gym))
+sum(duplicated(gym))
+sum(gym$Session_Duration..hours. <= 0)
+```
+
+```{r}
+gym <- gym |>
+  select(Age, Gender, Session_Duration..hours., Calories_Burned, Fat_Percentage, Experience_Level, BMI)
+head(gym)
+```
+
+## Exploratory Analysis
+
+```{r}
+mean(gym$Age)
+sd(gym$Age)
+summary(gym$Age)
+hist(gym$Age)
+```
+
+The mean age recorded in the dataset is 38.7 years, with ages ranging from 18 to 59.
+
+```{r}
+barplot(prop.table(table(gym$Gender)))
+```
+
+There are slightly more records labeled Male than Female in the dataset.
+
+```{r}
+mean(gym$Session_Duration..hours.)
+sd(gym$Session_Duration..hours.)
+summary(gym$Session_Duration..hours.)
+hist(gym$Session_Duration..hours.)
+```
+
+The mean recorded workout duration is approximately 1 hour and 15 minutes, with durations ranging from 30 minutes to 2 hours.
+
+```{r}
+mean(gym$Calories_Burned)
+sd(gym$Calories_Burned)
+summary(gym$Calories_Burned)
+hist(gym$Calories_Burned)
+```
+
+The mean calories burned per recorded workout is approximately 905, with values ranging from 303 to 1,783. This describes total calories per session; the main comparison below uses calories per hour.
+
+```{r}
+mean(gym$Fat_Percentage)
+sd(gym$Fat_Percentage)
+summary(gym$Fat_Percentage)
+hist(gym$Fat_Percentage)
+```
+
+The mean body-fat percentage in the dataset is 24.98%, with values ranging from 10% to 35%. These values describe the full dataset rather than just the male records used in the main comparison.
+
+```{r}
+gym |>
+  group_by(Experience_Level) |>
+  summarize(Count = n())
+```
+
+Experience level 2 has the most records. Experience level 3 has approximately half as many records as level 1.
+
+```{r}
+mean(gym$BMI)
+sd(gym$BMI)
+summary(gym$BMI)
+hist(gym$BMI)
+```
+
+The mean recorded BMI is 24.91, with values ranging from 12.32 to 49.84.
+
+### Relationships Between Variables
+
+```{r}
+ggplot(gym) +
+  geom_point(aes(Fat_Percentage, BMI, color = as.character(Experience_Level)))
+ggplot(gym) +
+  geom_point(aes(Age, BMI, color = as.character(Experience_Level)))
+```
+
+The scatterplots do not show a strong relationship between age and BMI or between body-fat percentage and BMI. There is a clear pattern between body-fat percentage and experience level: level 3 records have values between 10% and 20%, while levels 1 and 2 have values of 20% or higher. This is a pattern in the dataset and does not establish that greater exercise experience causes lower body fat.
+
+```{r}
+ggplot(gym) +
+  geom_bar(aes(Experience_Level, fill = Gender))
+```
+
+The gender distribution is similar across the three experience levels, with slightly more records labeled Male in each group.
+
+## Group Comparison
+
+```{r}
+gymMales <- gym |>
+  filter(Gender == "Male") |> # Restrict the comparison to male records
+  select(Calories_Burned, Session_Duration..hours., Experience_Level) |>
+  arrange(desc(Experience_Level))
+```
+
+```{r}
+gymMales <- mutate(gymMales, CalPerHour = Calories_Burned/Session_Duration..hours.)
+head(gymMales)
+```
+
+```{r}
+experiencedMales <- gymMales |>
+  filter(Experience_Level == 3) |>
+  select(CalPerHour)
+
+noobieMales <- gymMales |>
+  filter(Experience_Level == 1) |>
+  select(CalPerHour)
+
+experiencedMales <- pull(experiencedMales)
+noobieMales <- pull(noobieMales)
+```
+
+```{r}
+gymMales |>
+  filter(Experience_Level %in% c(1, 3)) |>
+  group_by(Experience_Level) |>
+  summarize(
+    Count = n(),
+    Mean_CalPerHour = mean(CalPerHour),
+    SD_CalPerHour = sd(CalPerHour)
+  )
+
+boxplot(
+  noobieMales, experiencedMales,
+  names = c("Novice", "Experienced"),
+  main = "Calories Burned per Hour by Experience",
+  ylab = "Calories burned per hour"
+)
+```
+
+## Study Design and Hypotheses
+
+I compared calories burned per hour for 197 male records with experience level 1 and 101 male records with experience level 3. The novice group averaged 755.43 calories per hour, while the experienced group averaged 759.30. Throughout the analysis, I calculated the difference as experienced minus novice, giving an observed difference of 3.87 calories per hour.
+
+This is an analysis of an existing dataset. I did not assign experience levels or conduct an experiment. Because I have not verified the original collection and sampling methods, I cannot assume the records represent all male gym-goers. The statistical results should be interpreted with that limitation in mind.
+
+The null hypothesis is that the two groups have equal mean calories burned per hour. The alternative hypothesis is that their means differ.
+
+$$H_0: \mu_{\text{Experience 1 CalPerHour}} = \mu_{\text{Experience 3 CalPerHour}}$$
+
+$$H_1: \mu_{\text{Experience 1 CalPerHour}} \ne \mu_{\text{Experience 3 CalPerHour}}$$
+
+## Permutation Test
+
+```{r}
+obsDiff <- mean(experiencedMales) - mean(noobieMales)
+
+malesCalPerHour <- c(experiencedMales, noobieMales)
+N <- 10000
+diffMeans <- numeric(N)
+
+for (i in 1:N){
+  index <- sample(length(malesCalPerHour), size = length(experiencedMales), replace = F)
+  diffMeans[i] <- mean(malesCalPerHour[index]) - mean(malesCalPerHour[-index])
+}
+sum(abs(diffMeans) >= abs(obsDiff)) / N
+
+```
+
+I performed 10,000 random shuffles while keeping the original group sizes. The permutation p-value was approximately 0.70, meaning about 70% of the shuffles produced an absolute difference in means at least as large as the observed difference of 3.87 calories per hour.
+
+At a significance level of 0.05, I fail to reject the null hypothesis. This test does not provide strong evidence of a difference in mean calories burned per hour between the two groups. It does not establish that their means are equal.
+
+## Bootstrap Analysis
+
+```{r}
+N <- 10000
+bootDiff <- numeric(N)
+
+for (i in 1:N) {
+  bootExp <- sample(experiencedMales, size = length(experiencedMales), replace = TRUE)
+  bootNoob <- sample(noobieMales, size = length(noobieMales), replace = TRUE)
+  
+  bootDiff[i] <- mean(bootExp) - mean(bootNoob)
+}
+
+hist(bootDiff, main = "Bootstrap Distribution of Mean Differences", xlab = "Experienced minus novice (calories per hour)"
+)
+
+qqnorm(bootDiff, main = "Normal Q-Q Plot of Bootstrap Differences")
+
+qqline(bootDiff, lwd = 3, col = "red")
+```
+
+The bootstrap histogram is roughly symmetric, and the points in the normal Q-Q plot follow a reasonably straight line. This suggests that the bootstrap distribution of mean differences is approximately normal. These plots describe the shape of the resampling distribution; they do not establish whether the difference between groups is statistically significant.
+
+### Bootstrap Bias and Standard Error
+
+```{r}
+(bias <- mean(bootDiff) - obsDiff)
+(se <- sd(bootDiff))
+```
+
+The estimated bootstrap bias is small compared with the bootstrap standard error, meaning the average bootstrap difference is close to the observed difference. The standard error estimates how much the difference in sample means varies across the bootstrap samples.
+
+These results help describe uncertainty in the estimate. They do not verify that the original records are independent or representative of a broader population.
+
+### Bootstrap Percentile Confidence Interval
+
+```{r}
+(bootCI <- quantile(bootDiff, c(0.025, 0.975)))
+```
+
+I used the 2.5th and 97.5th percentiles of the bootstrap differences to construct a 95% bootstrap percentile confidence interval. The difference is measured as experienced minus novice, in calories burned per hour.
+
+The interval includes zero and extends into both negative and positive values. Under the assumptions of the method, it is compatible with either group having the higher mean. The interval therefore does not provide clear evidence of a difference between the groups.
+
+## Welch Two-Sample Test
+
+```{r}
+t.test(experiencedMales, noobieMales, alternative = "two.sided", conf.level = 0.95)
+```
+
+The Welch two-sample t-test produced a p-value of approximately 0.697 and a 95% confidence interval from -15.66 to 23.40 calories per hour for the experienced-minus-novice mean difference.
+
+Because the p-value is greater than 0.05 and the interval includes zero, I fail to reject the null hypothesis. Although the experienced group's sample mean was 3.87 calories per hour higher, the analysis does not provide strong evidence of a difference. The confidence interval remains compatible with differences in either direction.
+
+## Conclusions
+
+The bootstrap percentile interval and the Welch confidence interval give similar results, and both include zero. Both methods therefore lead to the same overall interpretation: this analysis does not provide strong evidence of a difference in mean calories burned per hour between the novice and experienced groups. Agreement between the methods does not establish that the groups are equivalent or remove limitations in the underlying data.
+
+## Limitations
+
+This analysis focuses on male records in experience levels 1 and 3, so its findings do not describe female records or the intermediate experience group. It also does not adjust for workout type, body weight, age, or other factors that could affect calorie expenditure.
+
+The tests treat the records as independent, and the permutation test assumes group labels are exchangeable under its null hypothesis. I have not verified the dataset's original collection process or sampling method, which limits how confidently these results can be applied beyond the dataset. I would treat this project as an application of statistical comparison and resampling methods rather than a general conclusion about exercise experience.
