@@ -1,0 +1,10 @@
+# Local R session and RStudio files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Rebuildable caches and operating-system files
+*_cache/
+.DS_Store
+Thumbs.db
